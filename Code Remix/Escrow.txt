@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract KyQuy {
+    address public nguoiMua;
+    address public nguoiBan;
+    address public trungGian;
+    uint public soTien;
+    bool public nguoiMuaXacNhan;
+    bool public nguoiBanXacNhan;
+
+    enum TrangThaiGiaoDich { ChoXacNhan, DaXacNhan, HoanTat, DaHuy }
+    TrangThaiGiaoDich public trangThai;
+
+    constructor(address _nguoiMua, address _nguoiBan, address _trungGian) payable {
+        require(msg.value > 0, "Phai gui mot so tien ky quy");
+        nguoiMua = _nguoiMua;
+        nguoiBan = _nguoiBan;
+        trungGian = _trungGian;
+        soTien = msg.value;
+        trangThai = TrangThaiGiaoDich.ChoXacNhan;
+    }
+
+    modifier chiDinhDanhThamGia() {
+        require(msg.sender == nguoiMua || msg.sender == nguoiBan || msg.sender == trungGian, "Khong co quyen");
+        _;
+    }
+
+    function xacNhanGiaoDich() public chiDinhDanhThamGia {
+        if (msg.sender == nguoiMua) {
+            nguoiMuaXacNhan = true;
+        } else if (msg.sender == nguoiBan) {
+            nguoiBanXacNhan = true;
+        }
+
+        if (nguoiMuaXacNhan && nguoiBanXacNhan) {
+            trangThai = TrangThaiGiaoDich.DaXacNhan;
+        }
+    }
+
+    function hoanTatGiaoDich() public {
+        require(trangThai == TrangThaiGiaoDich.DaXacNhan, "Giao dich chua duoc xac nhan");
+        require(msg.sender == trungGian, "Chi trung gian moi duoc hoan tat");
+
+        payable(nguoiBan).transfer(soTien);
+        trangThai = TrangThaiGiaoDich.HoanTat;
+    }
+
+    function huyGiaoDich() public chiDinhDanhThamGia {
+        require(trangThai == TrangThaiGiaoDich.ChoXacNhan, "Khong the huy khi da xac nhan");
+
+        payable(nguoiMua).transfer(soTien);
+        trangThai = TrangThaiGiaoDich.DaHuy;
+    }
+}

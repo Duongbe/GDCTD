@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Giao diện KyQuy</title>
+  <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+  <h2>Giao diện hợp đồng KyQuy</h2>
+
+  <button onclick="connectWallet()">🔗 Kết nối ví MetaMask</button>
+  <div id="inputSection" style="display:none;">
+    <label for="roleId">Nhập vai trò (mua/ban/trunggian):</label>
+    <input type="text" id="roleId" placeholder="Nhập: mua, ban hoặc trunggian" oninput="capNhatVaiTro()">
+    <button onclick="xacNhanVaiTro()">Xác nhận vai trò</button>
+  </div>
+  <p>Ví hiện tại: <span id="currentAddress">Chưa kết nối</span></p>
+  <p>Số dư: <span id="balance">...</span> ETH</p>
+  <p>Mạng: <span id="network">...</span></p>
+  <p>Vai trò: <span id="role">...</span></p>
+
+  <h3>Danh sách ví đã xác nhận vai trò</h3>
+  <table border="1" id="walletTable">
+    <thead>
+      <tr>
+        <th>Vai trò</th>
+        <th>Địa chỉ ví</th>
+        <th>Số dư (ETH)</th>
+        <th>Mạng</th>
+        <th>Hành động</th>
+      </tr>
+    </thead>
+    <tbody id="walletTableBody">
+      <!-- Dữ liệu sẽ được thêm ở đây -->
+    </tbody>
+  </table>
+
+  <h3>Lịch sử giao dịch đã hoàn tất</h3>
+  <table border="1" id="historyTable">
+    <thead>
+      <tr>
+        <th>Thời gian</th>
+        <th>Trạng thái</th>
+        <th>Tx Hash</th>
+      </tr>
+    </thead>
+    <tbody id="historyTableBody">
+      <!-- Dữ liệu sẽ được thêm ở đây -->
+    </tbody>
+  </table>
+
+  <hr>
+
+  <h3>Thông tin giao dịch</h3>
+  <p>Người mua: <span id="nguoiMua">...</span></p>
+  <p>Người bán: <span id="nguoiBan">...</span></p>
+  <p>Trung gian: <span id="trungGian">...</span></p>
+  <p>Số tiền ký quỹ (wei): <span id="soTien">...</span></p>
+  <p>Trạng thái: <span id="trangThai">...</span></p>
+  <p>Người mua xác nhận: <span id="muaXacNhan">...</span></p>
+  <p>Người bán xác nhận: <span id="banXacNhan">...</span></p>
+
+  <button onclick="xacNhan()">✅ Xác nhận giao dịch</button>
+  <button onclick="hoanTat()">🏁 Hoàn tất giao dịch (chỉ trung gian)</button>
+  <button onclick="huy()">❌ Hủy giao dịch</button>
+
+  <script>
+    const API_URL = 'http://localhost:3000';
+    let currentAccount;
+    let currentRole = "";
+    let walletList = [];
+    let historyList = [];
+    let lastStatus = null;
+
+    // Contract ABI và địa chỉ (Sao chép từ server.js)
+    const contractABI = [
+	{
+		"inputs": [],
+		"name": "hoanTatGiaoDich",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "huyGiaoDich",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_nguoiMua",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "_nguoiBan",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "_trungGian",
+				"type": "address"
+			}
+		],
+		"stateMutability": "payable",
+		"type": "constructor"
+	},
+	{
+		"inputs": [],
+		"name": "xacNhanGiaoDich",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "nguoiBan",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "nguoiBanXacNhan",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "nguoiMua",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "nguoiMuaXacNhan",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "soTien",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "trangThai",
+		"outputs": [
+			{
+				"internalType": "enum KyQuy.TrangThaiGiaoDich",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "trungGian",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+];
+    const contractAddress = "0xC8877238BCA11955c8376c6a1B82f6ED982d4cF1"; // Thay bằng địa chỉ contract của bạn nếu khác
+
+    // Khởi tạo Web3 và contract instance (ban đầu là null)
+    let web3js = null;
+    let frontendContract = null;
+
+    async function connectWallet() {
+      console.log('Bắt đầu kết nối ví...');
+      try {
+        if (typeof window.ethereum === 'undefined') {
+          alert('Vui lòng cài đặt MetaMask!');
+          return;
+        }
+
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        currentAccount = accounts[0];
+
+        // Khởi tạo Web3 và Contract instance sau khi kết nối ví
+        web3js = new Web3(window.ethereum);
+        frontendContract = new web3js.eth.Contract(contractABI, contractAddress);
+
+        const walletRes = await fetch(`${API_URL}/api/wallet/connect?address=${currentAccount}`);
+        const walletData = await walletRes.json();
+
+        if (!walletRes.ok) {
+          alert(walletData.error || "Không thể kết nối ví");
+          return;
+        }
+
+        document.getElementById("currentAddress").innerText = currentAccount;
+        document.getElementById("balance").innerText = walletData.balance;
+        document.getElementById("network").innerText = walletData.networkId;
+        document.getElementById("inputSection").style.display = "block";
+
+        // --- Lấy thông tin hợp đồng và xác định vai trò ---
+        // Sử dụng frontendContract để đọc thông tin
+        const contractData = {
+          nguoiMua: await frontendContract.methods.nguoiMua().call(),
+          nguoiBan: await frontendContract.methods.nguoiBan().call(),
+          trungGian: await frontendContract.methods.trungGian().call(),
+          // Các thông tin khác sẽ lấy qua getContractData() sau
+        };
+
+        const acc = currentAccount.toLowerCase();
+        if (acc === contractData.nguoiMua.toLowerCase()) {
+          alert("Bạn là Người Mua");
+          currentRole = "Người Mua";
+          getContractData(); // Lấy toàn bộ dữ liệu contract
+        } else if (acc === contractData.nguoiBan.toLowerCase()) {
+          alert("Bạn là Người Bán");
+          currentRole = "Người Bán";
+          getContractData(); // Lấy toàn bộ dữ liệu contract
+        } else if (acc === contractData.trungGian.toLowerCase()) {
+          alert("Bạn là Trung Gian");
+          currentRole = "Trung Gian";
+          getContractData(); // Lấy toàn bộ dữ liệu contract
+        } else {
+          alert("Bạn không thuộc giao dịch này!");
+          // Nếu không thuộc, ẩn phần nhập vai trò và các nút giao dịch
+          document.getElementById("inputSection").style.display = "none";
+          // Bạn có thể ẩn thêm các nút xác nhận, hoàn tất, hủy ở đây
+        }
+
+      } catch (error) {
+        alert("Lỗi khi kết nối ví: " + error.message);
+        console.error(error);
+      }
+    }
+
+    async function getContractData() {
+      try {
+        // Sử dụng frontendContract để đọc thông tin
+        if (!frontendContract) {
+          console.error("Contract instance not initialized.");
+          return;
+        }
+
+        const nguoiMua = await frontendContract.methods.nguoiMua().call();
+        const nguoiBan = await frontendContract.methods.nguoiBan().call();
+        const trungGian = await frontendContract.methods.trungGian().call();
+        const soTien = await frontendContract.methods.soTien().call();
+        const trangThai = await frontendContract.methods.trangThai().call();
+        const nguoiMuaXacNhan = await frontendContract.methods.nguoiMuaXacNhan().call();
+        const nguoiBanXacNhan = await frontendContract.methods.nguoiBanXacNhan().call();
+
+        document.getElementById("nguoiMua").innerText = nguoiMua;
+        document.getElementById("nguoiBan").innerText = nguoiBan;
+        document.getElementById("trungGian").innerText = trungGian;
+        document.getElementById("soTien").innerText = soTien; // Lưu ý: soTien ở đây là wei, cần format lại nếu muốn hiển thị ETH
+        document.getElementById("trangThai").innerText = convertTrangThai(parseInt(trangThai));
+        document.getElementById("muaXacNhan").innerText = nguoiMuaXacNhan;
+        document.getElementById("banXacNhan").innerText = nguoiBanXacNhan;
+
+        // Tự động lưu lịch sử nếu trạng thái là Hoàn tất và chưa có trong lịch sử
+        if (parseInt(trangThai) === 2 && lastStatus !== 2) {
+          const now = new Date();
+          let txHash = "";
+
+          // Lấy TX hash mới nhất liên quan đến contract (cách này không chính xác 100% và chỉ hoạt động trên frontend)
+          // Cách tốt hơn là backend trả về transaction hash khi hoàn tất giao dịch.
+          // Hiện tại, hàm hoanTat() trên backend CÓ trả về transactionHash, nên ta sẽ dùng nó.
+          // Do đó, đoạn code này có thể không cần thiết nếu hoàn tất được gọi từ frontend.
+
+          // Ví dụ lấy TX hash từ block (ít tin cậy):
+          // if (web3js) { // Check if web3js is initialized
+          //   const latestBlock = await web3js.eth.getBlock("latest", true);
+          //   const contractAddressLowerCase = contractAddress.toLowerCase();
+          //   const tx = latestBlock.transactions.find(
+          //     t => t.to && t.to.toLowerCase() === contractAddressLowerCase
+          //   );
+          //   if (tx) txHash = tx.hash;
+          // }
+
+          // Thay đổi: Hàm hoanTat() trên backend đã trả về txHash, nên lịch sử hoàn tất nên lấy từ đó.
+          // Đối với lịch sử "Hoàn tất" được tự động thêm khi load trang và trạng thái là 2,
+          // không có txHash trực tiếp từ giao dịch đó. Ta có thể để trống hoặc tìm theo cách trên (ít tin cậy).
+          // Giữ nguyên cách cũ cho trường hợp này, hoặc cân nhắc lưu txHash khi hoàn tất được gọi từ frontend.
+
+          // Giữ nguyên logic cũ cho trường hợp tự động lưu khi load trang và trạng thái là Hoàn tất
+           if (web3js && parseInt(trangThai) === 2 && lastStatus !== 2) {
+                try {
+                    const latestBlock = await web3js.eth.getBlock("latest", true);
+                    const contractAddressLowerCase = contractAddress.toLowerCase();
+                    // Tìm giao dịch gần nhất đến contract
+                    const tx = latestBlock.transactions.find(
+                      t => t.to && t.to.toLowerCase() === contractAddressLowerCase &&
+                           t.from && t.from.toLowerCase() === trungGian.toLowerCase() // Thêm điều kiện chỉ trung gian mới gọi hoanTat
+                    );
+                    if (tx) txHash = tx.hash;
+                     console.log("Found potential txHash for auto-save:", txHash);
+                } catch (blockError) {
+                    console.error("Error fetching block for txHash:", blockError);
+                }
+            }
+
+          // Thêm vào lịch sử chỉ khi trạng thái chuyển từ khác 2 sang 2
+          if (parseInt(trangThai) === 2 && lastStatus !== 2) {
+              const now = new Date();
+              // TxHash sẽ được lấy từ response của hoanTat() nếu gọi từ frontend
+              // Nếu là tự động load, txHash có thể trống hoặc tìm theo block (ít tin cậy)
+               historyList.push({
+                time: now.toLocaleString(),
+                address: currentAccount, // Ví đang kết nối lúc tự động lưu
+                role: currentRole, // Vai trò lúc tự động lưu
+                status: "Hoàn tất",
+                txHash: txHash // Có thể trống nếu không tìm được
+              });
+              renderHistoryTable();
+              localStorage.setItem("historyList", JSON.stringify(historyList));
+          }
+        }
+        lastStatus = parseInt(trangThai);
+      } catch (error) {
+        console.error("Lỗi khi lấy dữ liệu hợp đồng:", error);
+         // Reset contract data display on error
+        document.getElementById("nguoiMua").innerText = "...";
+        document.getElementById("nguoiBan").innerText = "...";
+        document.getElementById("trungGian").innerText = "...";
+        document.getElementById("soTien").innerText = "...";
+        document.getElementById("trangThai").innerText = "Lỗi tải";
+        document.getElementById("muaXacNhan").innerText = "...";
+        document.getElementById("banXacNhan").innerText = "...";
+      }
+    }
+
+    function convertTrangThai(value) {
+      switch (value) {
+        case 0: return "Chờ xác nhận";
+        case 1: return "Đã xác nhận";
+        case 2: return "Hoàn tất";
+        case 3: return "Đã hủy";
+        default: return "Không xác định";
+      }
+    }
+
+    async function xacNhan() {
+      try {
+        // Lấy địa chỉ ví hiện tại từ MetaMask
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        const account = accounts[0];
+
+        if (!account) {
+          alert("Vui lòng kết nối ví MetaMask trước!");
+          return;
+        }
+        if (!frontendContract) {
+             alert("Hợp đồng chưa được khởi tạo. Vui lòng kết nối ví lại.");
+             return;
+        }
+
+        alert("Vui lòng xác nhận giao dịch trên MetaMask...");
+
+        // Gọi hàm xacNhanGiaoDich từ frontend
+        const result = await frontendContract.methods.xacNhanGiaoDich().send({ from: account });
+
+        console.log("Transaction result:", result);
+        alert("Giao dịch đã được xác nhận thành công!");
+        
+        // Cập nhật lại thông tin giao dịch sau khi xác nhận
+        getContractData();
+
+      } catch (error) {
+        // MetaMask sẽ ném lỗi nếu người dùng từ chối hoặc có lỗi khác
+        alert("Lỗi khi xác nhận giao dịch: " + error.message);
+        console.error(error);
+      }
+    }
+
+    async function hoanTat() {
+        // Logic hoanTat vẫn gọi API backend để chỉ trung gian mới có quyền gọi từ server
+        // Nếu muốn gọi từ frontend, cần kiểm tra vai trò trung gian và cho phép gọi frontendContract.methods.hoanTatGiaoDich().send()
+        // Hiện tại giữ nguyên gọi backend API.
+      try {
+        const response = await fetch(`${API_URL}/api/contract/hoantat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ address: currentAccount })
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+          alert("Đã hoàn tất giao dịch!");
+          // Lưu lịch sử giao dịch
+          const now = new Date();
+          historyList.push({
+            time: now.toLocaleString(),
+            address: currentAccount,
+            role: currentRole,
+            status: "Hoàn tất",
+            txHash: data.transactionHash || "" // Lấy transactionHash từ response backend
+          });
+          renderHistoryTable();
+          localStorage.setItem("historyList", JSON.stringify(historyList));
+          getContractData(); // Cập nhật trạng thái UI
+        } else {
+          alert(data.error || "Chỉ trung gian mới được hoàn tất giao dịch hoặc giao dịch chưa xác nhận");
+        }
+      } catch (error) {
+        alert("Lỗi khi hoàn tất giao dịch");
+        console.error(error);
+      }
+    }
+
+    async function huy() {
+         // Logic huy vẫn gọi API backend
+         // Nếu muốn gọi từ frontend, cần kiểm tra quyền và cho phép gọi frontendContract.methods.huyGiaoDich().send()
+         // Hiện tại giữ nguyên gọi backend API.
+      try {
+        const response = await fetch(`${API_URL}/api/contract/huy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ address: currentAccount })
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+          alert("Đã hủy giao dịch!");
+          getContractData();
+        } else {
+          alert(data.error || "Không thể hủy khi đã xác nhận hoặc bạn không có quyền");
+        }
+      } catch (error) {
+        alert("Lỗi khi hủy giao dịch");
+        console.error(error);
+      }
+    }
+
+    function xacNhanVaiTro() {
+      let roleId = document.getElementById("roleId").value.trim();
+      let roleText = roleId || "Không xác định";
+      currentRole = roleText; // Cập nhật currentRole để dùng cho lưu lịch sử
+
+      // Cho phép một ví có nhiều vai trò khác nhau
+      if (
+        currentAccount &&
+        roleText !== "Không xác định" &&
+        !walletList.some(w => w.address === currentAccount && w.role === roleText)
+      ) {
+        const balance = document.getElementById("balance").innerText;
+        const network = document.getElementById("network").innerText;
+        walletList.push({
+          role: roleText,
+          address: currentAccount,
+          balance: balance,
+          network: network
+        });
+        renderWalletTable();
+        localStorage.setItem("walletList", JSON.stringify(walletList));
+      }
+       // Vai trò hiển thị đã được cập nhật bởi capNhatVaiTro()
+    }
+
+    function capNhatVaiTro() {
+      let roleId = document.getElementById("roleId").value.trim();
+      document.getElementById("role").innerText = roleId || "...";
+    }
+
+    function renderWalletTable() {
+      const tbody = document.getElementById("walletTableBody");
+      tbody.innerHTML = "";
+      walletList.forEach((w, idx) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${w.role}</td>
+          <td>${w.address}</td>
+          <td>${w.balance}</td>
+          <td>${w.network}</td>
+          <td>
+            <button onclick="xoaVi(${idx})">Xóa</button>
+            <button onclick="capNhatVi(${idx})">Cập nhật</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    function renderHistoryTable() {
+      const tbody = document.getElementById("historyTableBody");
+      tbody.innerHTML = "";
+      historyList.forEach(h => {
+     const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${h.time}</td>
+          <td>${h.status}</td>
+          <td>
+            ${h.txHash 
+              ? `<input type="text" readonly value="${h.txHash}" style="width: 220px" onclick="this.select()">`
+                : ""}
+          </td>
+        `;
+    tbody.appendChild(row);
+  });
+}
+
+    function xoaVi(index) {
+      walletList.splice(index, 1);
+      renderWalletTable();
+      localStorage.setItem("walletList", JSON.stringify(walletList));
+    }
+
+    async function capNhatVi(index) {
+      if (index < 0 || index >= walletList.length) {
+        console.error("Invalid wallet index:", index);
+        return;
+      }
+
+      const walletToUpdate = walletList[index];
+      const addressToUpdate = walletToUpdate.address;
+
+      alert(`Đang cập nhật thông tin ví: ${addressToUpdate}...`);
+
+      try {
+        const walletRes = await fetch(`${API_URL}/api/wallet/connect?address=${addressToUpdate}`);
+        const walletData = await walletRes.json();
+
+        if (walletRes.ok) {
+          // Cập nhật thông tin trong danh sách
+          walletList[index].balance = walletData.balance;
+          walletList[index].network = walletData.networkId;
+          
+          // Render lại bảng để hiển thị thông tin mới
+          renderWalletTable();
+          
+          // Lưu lại vào Local Storage
+          localStorage.setItem("walletList", JSON.stringify(walletList));
+
+          alert("Cập nhật thông tin ví thành công!");
+        } else {
+          alert(walletData.error || "Không thể cập nhật thông tin ví");
+          console.error("Error updating wallet info:", walletData.error);
+        }
+      } catch (error) {
+        alert("Lỗi khi gọi API cập nhật ví: " + error.message);
+        console.error(error);
+      }
+    }
+
+    window.onload = function() {
+      const saved = localStorage.getItem("walletList");
+      if (saved) {
+        walletList = JSON.parse(saved);
+        renderWalletTable();
+      }
+      const savedHistory = localStorage.getItem("historyList");
+      if (savedHistory) {
+        historyList = JSON.parse(savedHistory);
+        renderHistoryTable();
+      }
+      // Không cần tự động connect wallet ở onload vì MetaMask yêu cầu user action
+    };
+  </script>
+</body>
+</html>
